@@ -274,8 +274,8 @@
         └─ attendance_ukrwi      (daily attendance · employee -> fp_users.userid)</code></pre>
 </section>
 <section id="t-attendance" class="card">
-  <h3>1. attendance_ukrwi <span class="badge accent">21 columns</span></h3>
-  <p>One row per employee per working day. Punch-in / punch-out selfie, GPS, time, address, working hours.</p>
+  <h3>1. attendance_ukrwi <span class="badge accent">33 columns</span></h3>
+  <p>One row per employee per working day. Punch-in / punch-out selfie, GPS, time, address, working hours. Columns 22–33 are the E-HR biometric sync fields.</p>
   <table class="cols">
     <thead><tr><th>#</th><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
     <tbody>
@@ -300,11 +300,24 @@
       <tr><td>19</td><td class="col">out_address</td><td class="type">text</td><td>reverse-geocoded</td></tr>
       <tr><td>20</td><td class="col">automation_trigger</td><td class="type">text</td><td></td></tr>
       <tr><td>21</td><td class="col">working_hours</td><td class="type">double</td><td>decimal hours</td></tr>
+      <tr><td>22</td><td class="col">trans_intid</td><td class="type">bigint</td><td>E-HR transaction id</td></tr>
+      <tr><td>23</td><td class="col">employeecode</td><td class="type">varchar</td><td>E-HR employee code</td></tr>
+      <tr><td>24</td><td class="col">attendancedate</td><td class="type">timestamp</td><td>E-HR attendance date</td></tr>
+      <tr><td>25</td><td class="col">timein</td><td class="type">varchar</td><td>E-HR punch-in time</td></tr>
+      <tr><td>26</td><td class="col">datetimein</td><td class="type">timestamp</td><td>E-HR punch-in datetime</td></tr>
+      <tr><td>27</td><td class="col">timeout</td><td class="type">varchar</td><td>E-HR punch-out time</td></tr>
+      <tr><td>28</td><td class="col">datetimeout</td><td class="type">timestamp</td><td>E-HR punch-out datetime</td></tr>
+      <tr><td>29</td><td class="col">shiftid</td><td class="type">integer</td><td>shift identifier</td></tr>
+      <tr><td>30</td><td class="col">attendancestatus</td><td class="type">varchar</td><td>E-HR status string</td></tr>
+      <tr><td>31</td><td class="col">shiftintime</td><td class="type">varchar</td><td>scheduled shift start</td></tr>
+      <tr><td>32</td><td class="col">shiftouttime</td><td class="type">varchar</td><td>scheduled shift end</td></tr>
+      <tr><td>33</td><td class="col">calculatedworkinghours</td><td class="type">numeric</td><td>E-HR computed hours</td></tr>
     </tbody>
   </table>
 </section>
 <section id="t-users" class="card">
-  <h3>2. fp_users <span class="badge accent">17 columns</span></h3>
+  <h3>2. fp_users <span class="badge accent">55 columns</span></h3>
+  <p>Master list of app users. Columns 1–17 are the core FieldProxy fields; columns 18–55 are the E-HR (HRMS) employee-master fields synced from ARSSBL.</p>
   <table class="cols">
     <thead><tr><th>#</th><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
     <tbody>
@@ -325,22 +338,60 @@
       <tr><td>15</td><td class="col">deleted_at</td><td class="type">text</td><td></td></tr>
       <tr><td>16</td><td class="col">created_at</td><td class="type">text</td><td></td></tr>
       <tr><td>17</td><td class="col">updated_at</td><td class="type">text</td><td></td></tr>
+      <tr><td>18</td><td class="col">employee_code</td><td class="type">varchar</td><td>E-HR employee code</td></tr>
+      <tr><td>19</td><td class="col">title</td><td class="type">varchar</td><td>Mr / Ms / Dr</td></tr>
+      <tr><td>20</td><td class="col">emp_name</td><td class="type">varchar</td><td>full employee name</td></tr>
+      <tr><td>21</td><td class="col">employed_in</td><td class="type">varchar</td><td>entity employed in</td></tr>
+      <tr><td>22</td><td class="col">mobile_no</td><td class="type">varchar</td><td>E-HR mobile number</td></tr>
+      <tr><td>23</td><td class="col">grade</td><td class="type">varchar</td><td>employee grade</td></tr>
+      <tr><td>24</td><td class="col">effective_grade_date</td><td class="type">date</td><td>grade effective from</td></tr>
+      <tr><td>25</td><td class="col">region</td><td class="type">varchar</td><td>posting region</td></tr>
+      <tr><td>26</td><td class="col">cluster</td><td class="type">varchar</td><td>posting cluster</td></tr>
+      <tr><td>27</td><td class="col">branch</td><td class="type">varchar</td><td>posting branch</td></tr>
+      <tr><td>28</td><td class="col">company</td><td class="type">varchar</td><td>company / legal entity</td></tr>
+      <tr><td>29</td><td class="col">effective_company_date</td><td class="type">date</td><td>company effective from</td></tr>
+      <tr><td>30</td><td class="col">department</td><td class="type">varchar</td><td></td></tr>
+      <tr><td>31</td><td class="col">sub_department</td><td class="type">varchar</td><td></td></tr>
+      <tr><td>32</td><td class="col">sub_sub_department</td><td class="type">varchar</td><td></td></tr>
+      <tr><td>33</td><td class="col">designation</td><td class="type">varchar</td><td></td></tr>
+      <tr><td>34</td><td class="col">effective_designation_date</td><td class="type">date</td><td>designation effective from</td></tr>
+      <tr><td>35</td><td class="col">sub_designation</td><td class="type">varchar</td><td></td></tr>
+      <tr><td>36</td><td class="col">product</td><td class="type">varchar</td><td>product line</td></tr>
+      <tr><td>37</td><td class="col">reporting_person_empcode</td><td class="type">varchar</td><td>manager's employee code</td></tr>
+      <tr><td>38</td><td class="col">reporting_name</td><td class="type">varchar</td><td>manager's name</td></tr>
+      <tr><td>39</td><td class="col">cost_region</td><td class="type">varchar</td><td>cost-centre region</td></tr>
+      <tr><td>40</td><td class="col">cost_cluster</td><td class="type">varchar</td><td>cost-centre cluster</td></tr>
+      <tr><td>41</td><td class="col">cost_branch</td><td class="type">varchar</td><td>cost-centre branch</td></tr>
+      <tr><td>42</td><td class="col">email_id</td><td class="type">varchar</td><td>E-HR email</td></tr>
+      <tr><td>43</td><td class="col">doj</td><td class="type">date</td><td>date of joining</td></tr>
+      <tr><td>44</td><td class="col">dob</td><td class="type">date</td><td>date of birth</td></tr>
+      <tr><td>45</td><td class="col">lwd</td><td class="type">date</td><td>last working day</td></tr>
+      <tr><td>46</td><td class="col">dor</td><td class="type">date</td><td>date of relieving</td></tr>
+      <tr><td>47</td><td class="col">reason_for_leaving</td><td class="type">varchar</td><td></td></tr>
+      <tr><td>48</td><td class="col">reason_for_leaving_desc</td><td class="type">text</td><td></td></tr>
+      <tr><td>49</td><td class="col">emp_post</td><td class="type">varchar</td><td>employee post</td></tr>
+      <tr><td>50</td><td class="col">branch_address</td><td class="type">text</td><td></td></tr>
+      <tr><td>51</td><td class="col">state_of_posting</td><td class="type">varchar</td><td></td></tr>
+      <tr><td>52</td><td class="col">incentive_type</td><td class="type">varchar</td><td></td></tr>
+      <tr><td>53</td><td class="col">incentive_applicable</td><td class="type">varchar</td><td></td></tr>
+      <tr><td>54</td><td class="col">buddy_code</td><td class="type">varchar</td><td>buddy's employee code</td></tr>
+      <tr><td>55</td><td class="col">buddy_name</td><td class="type">varchar</td><td>buddy's name</td></tr>
     </tbody>
   </table>
 </section>
 <section id="t-teams" class="card">
-  <h3>3. fp_teams <span class="badge accent">team master</span></h3>
+  <h3>3. fp_teams <span class="badge accent">8 columns</span></h3>
   <table class="cols">
-    <thead><tr><th>#</th><th>Column</th><th>Description</th></tr></thead>
+    <thead><tr><th>#</th><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
     <tbody>
-      <tr><td>1</td><td class="col">id</td><td><span class="flag pk">PK</span></td></tr>
-      <tr><td>2</td><td class="col">team_id</td><td>business identifier (e.g. <code>admin</code>)</td></tr>
-      <tr><td>3</td><td class="col">team_name</td><td>display name</td></tr>
-      <tr><td>4</td><td class="col">description</td><td>short note</td></tr>
-      <tr><td>5</td><td class="col">status</td><td><code>Active</code> · <code>Inactive</code></td></tr>
-      <tr><td>6</td><td class="col">created_by</td><td>e.g. <code>admin</code> · <code>arssbl-sync</code></td></tr>
-      <tr><td>7</td><td class="col">created_at</td><td></td></tr>
-      <tr><td>8</td><td class="col">updated_at</td><td></td></tr>
+      <tr><td>1</td><td class="col">id</td><td class="type">integer</td><td><span class="flag pk">PK</span></td></tr>
+      <tr><td>2</td><td class="col">team_id</td><td class="type">varchar</td><td>business identifier (e.g. <code>admin</code>)</td></tr>
+      <tr><td>3</td><td class="col">team_name</td><td class="type">varchar</td><td>display name</td></tr>
+      <tr><td>4</td><td class="col">description</td><td class="type">text</td><td>short note</td></tr>
+      <tr><td>5</td><td class="col">status</td><td class="type">varchar</td><td><code>Active</code> · <code>Inactive</code></td></tr>
+      <tr><td>6</td><td class="col">created_by</td><td class="type">varchar</td><td>e.g. <code>admin</code> · <code>arssbl-sync</code></td></tr>
+      <tr><td>7</td><td class="col">created_at</td><td class="type">timestamp</td><td></td></tr>
+      <tr><td>8</td><td class="col">updated_at</td><td class="type">timestamp</td><td></td></tr>
     </tbody>
   </table>
 </section>
