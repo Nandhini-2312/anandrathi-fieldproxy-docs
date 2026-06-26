@@ -187,6 +187,10 @@
     <a href="#sample-users">Insert / update users</a>
     <a href="#sample-read">Read & filter</a>
     <a href="#sample-delete">Delete a row</a>
+    <div class="grp">Encrypted bulk import</div>
+    <a href="#import-csv">AES-256 CSV import</a>
+    <a href="#encrypt-build">Build the encrypted file</a>
+    <a href="#encrypt-setup">Key &amp; IV setup</a>
     <div class="grp">Reference</div>
     <a href="#errors">Common errors</a>
   </nav>
@@ -265,6 +269,7 @@
   <div class="endpoint"><div class="row"><span class="verb">POST</span><span class="path">/api/read</span></div><p>Select rows by an exact-match condition.</p></div>
   <div class="endpoint"><div class="row"><span class="verb">POST</span><span class="path">/api/update</span></div><p>Update column values on rows matching a condition.</p></div>
   <div class="endpoint"><div class="row"><span class="verb">POST</span><span class="path">/api/delete</span></div><p>Delete rows matching a condition.</p></div>
+  <div class="endpoint"><div class="row"><span class="verb">POST</span><span class="path">/api/import-csv</span><span class="badge warn">AES-256 encrypted</span></div><p>Import an <strong>AES-256-CBC encrypted CSV</strong> into a table. FieldProxy decrypts with the key/IV held in its secrets vault, validates every row against the live schema, and inserts <strong>all-or-nothing</strong>. See <a href="#import-csv">Encrypted bulk import</a>.</p></div>
 </section>
 <section id="schema-overview">
   <h2>Database schema overview</h2>
@@ -507,6 +512,126 @@
     "condition": { "userid": "EMP10234" }
   }'</code></pre>
 </section>
+<hr/>
+<section id="import-csv">
+  <h2>Encrypted bulk import <span class="badge warn">AES-256-CBC</span></h2>
+  <p>For large loads (e.g. month-end attendance), data is sent to FieldProxy as an <strong>AES-256-CBC encrypted CSV</strong> via <code>POST /api/import-csv</code>. ARSSBL encrypts the CSV with the shared key + IV and base64-encodes it; FieldProxy decrypts it automatically using the key/IV held in its tenant secrets vault, validates every row against the live table schema, and inserts <strong>all rows in one atomic statement</strong> — if any row is invalid, nothing is inserted.</p>
+  <div class="note"><strong>The key &amp; IV are never sent in the request.</strong> The body carries only the <em>names</em> of the secrets (<code>keySecret</code> / <code>ivSecret</code>) that FieldProxy holds in its vault. There is no per-request password — the key/IV are provisioned once during setup.</div>
+
+  <h3>Encryption recipe</h3>
+  <table class="cols">
+    <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td class="col">Algorithm</td><td>AES-256-CBC</td></tr>
+      <tr><td class="col">Padding</td><td>PKCS7 (PKCS5 for AES in Java)</td></tr>
+      <tr><td class="col">Key</td><td><strong>32 bytes</strong>, base64-encoded</td></tr>
+      <tr><td class="col">IV</td><td><strong>16 bytes</strong>, base64-encoded</td></tr>
+      <tr><td class="col">Ciphertext (<code>file</code>)</td><td>base64-encoded</td></tr>
+      <tr><td class="col">CSV</td><td>UTF-8 · row 1 = column names, matching the target table exactly</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Request</h3>
+<pre><code>curl --request POST 'https://api-india-1.fieldproxy.ai/api/import-csv' \
+  --header 'x-api-key: &lt;YOUR_API_KEY&gt;' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "tableName": "attendance_ukrwi",
+    "file": "&lt;base64 of the AES-256-CBC ciphertext&gt;",
+    "keySecret": "EHR_IMPORT_KEY",
+    "ivSecret": "EHR_IMPORT_IV"
+  }'</code></pre>
+  <table class="cols">
+    <thead><tr><th>Field</th><th>Required</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td class="col">tableName</td><td>yes</td><td>Target table (e.g. <code>attendance_ukrwi</code>, <code>fp_users</code>).</td></tr>
+      <tr><td class="col">file</td><td>yes</td><td>Base64 of the AES-256-CBC ciphertext (PKCS7 padded).</td></tr>
+      <tr><td class="col">keySecret</td><td>yes</td><td>Name of the vault secret holding the base64 32-byte key (e.g. <code>EHR_IMPORT_KEY</code>).</td></tr>
+      <tr><td class="col">ivSecret</td><td>yes</td><td>Name of the vault secret holding the base64 16-byte IV (e.g. <code>EHR_IMPORT_IV</code>).</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Success response</h3>
+<pre><code>{
+  "message": "Successfully imported 250 rows into attendance_ukrwi",
+  "rowCount": 250,
+  "table": "attendance_ukrwi",
+  "tenant": "arssbl",
+  "columns": ["date", "employee", "attendance_status", "..."]
+}</code></pre>
+
+  <h3>Validation failures (HTTP 400, all-or-nothing)</h3>
+  <p>The body always includes a <code>stage</code> telling you where it failed:</p>
+  <table class="cols">
+    <thead><tr><th>stage</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td class="col">secrets</td><td>Unknown secret name, or wrong key/IV length.</td></tr>
+      <tr><td class="col">decrypt</td><td>Wrong key/IV or corrupted ciphertext.</td></tr>
+      <tr><td class="col">csv</td><td>Empty, header-only, or too many rows.</td></tr>
+      <tr><td class="col">columns</td><td>Unknown / duplicate / empty header columns (response lists the valid columns).</td></tr>
+      <tr><td class="col">rows</td><td>Per-row errors <code>{row, column, value, message}</code> (capped at 100).</td></tr>
+      <tr><td class="col">insert</td><td>Mapped Postgres constraint error (e.g. unique violation).</td></tr>
+    </tbody>
+  </table>
+  <p>Other codes: <code>401</code> (API key required), <code>403</code> (key not authorized for insert / this table), <code>429</code> (write rate limit exceeded), <code>500</code>.</p>
+</section>
+
+<section id="encrypt-build">
+  <h2>Building the encrypted <code>file</code></h2>
+  <p>Steps: (1) build the CSV with row 1 = exact column names; (2) AES-256-CBC encrypt the bytes with the shared 32-byte key and 16-byte IV (PKCS7); (3) base64-encode the ciphertext → that string is the <code>file</code> field.</p>
+  <details>
+    <summary>Node.js</summary>
+<pre><code>const crypto = require('crypto');
+
+// the agreed values (base64), the SAME ones vaulted in FieldProxy
+const key = Buffer.from(process.env.EHR_IMPORT_KEY_B64, 'base64'); // 32 bytes
+const iv  = Buffer.from(process.env.EHR_IMPORT_IV_B64,  'base64'); // 16 bytes
+
+function encryptCsv(csvString) {
+  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv); // PKCS7 by default
+  const enc = Buffer.concat([cipher.update(csvString, 'utf8'), cipher.final()]);
+  return enc.toString('base64'); // -&gt; goes in "file"
+}</code></pre>
+  </details>
+  <details>
+    <summary>Python</summary>
+<pre><code>import base64
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+
+key = base64.b64decode(EHR_IMPORT_KEY_B64)  # 32 bytes
+iv  = base64.b64decode(EHR_IMPORT_IV_B64)   # 16 bytes
+
+def encrypt_csv(csv_string: str) -&gt; str:
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    ct = cipher.encrypt(pad(csv_string.encode('utf-8'), AES.block_size))  # PKCS7
+    return base64.b64encode(ct).decode()    # -&gt; goes in "file"</code></pre>
+  </details>
+  <details>
+    <summary>Java</summary>
+<pre><code>SecretKeySpec k = new SecretKeySpec(Base64.getDecoder().decode(KEY_B64), "AES"); // 32 bytes
+IvParameterSpec ivp = new IvParameterSpec(Base64.getDecoder().decode(IV_B64));   // 16 bytes
+Cipher c = Cipher.getInstance("AES/CBC/PKCS5Padding"); // PKCS5 == PKCS7 for AES
+c.init(Cipher.ENCRYPT_MODE, k, ivp);
+String file = Base64.getEncoder()
+    .encodeToString(c.doFinal(csv.getBytes(StandardCharsets.UTF_8)));</code></pre>
+  </details>
+  <div class="note"><strong>Decryption is automatic on FieldProxy's side.</strong> ARSSBL never calls a decrypt step — FieldProxy resolves the vaulted key/IV, decrypts, validates and inserts.</div>
+</section>
+
+<section id="encrypt-setup">
+  <h2>One-time key &amp; IV setup</h2>
+  <ol>
+    <li>Generate a 32-byte key and 16-byte IV (base64):
+<pre><code>openssl rand -base64 32   # KEY (32 bytes)
+openssl rand -base64 16   # IV  (16 bytes)</code></pre>
+    </li>
+    <li>FieldProxy stores them in the tenant vault as <code>EHR_IMPORT_KEY</code> / <code>EHR_IMPORT_IV</code>.</li>
+    <li>The <strong>same</strong> key/IV are shared with ARSSBL out-of-band for the encrypt side.</li>
+  </ol>
+  <div class="note warn">Share the key/IV out-of-band (not over email). To rotate, update both the vault secret and the ARSSBL encrypt side together.</div>
+</section>
+<hr/>
 <section id="errors">
   <h2>Common errors</h2>
   <table class="cols">
@@ -521,7 +646,7 @@
   </table>
 </section>
 <footer>
-  <p>Anand Rathi × FieldProxy integration guide · last updated 2026-05-15.<br/>
+  <p>Anand Rathi × FieldProxy integration guide · last updated 2026-06-26.<br/>
   Questions? <a href="mailto:support@fieldproxy.com">support@fieldproxy.com</a></p>
 </footer>
 </main>
