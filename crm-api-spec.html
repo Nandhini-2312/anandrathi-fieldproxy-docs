@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Field Proxy — CRM Integration · API Document</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #fff; color: #1A1A1A;
+    font-family: "Segoe UI", Calibri, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+    font-size: 10.6pt; line-height: 1.5; }
+  .doc { max-width: 800px; margin: 0 auto; padding: 8px 10px 60px; }
+  h1 { color: #2E4B8B; font-size: 22pt; font-weight: 700; text-align: center; margin: 180px 0 6px; }
+  .sub { text-align: center; color: #333; font-size: 12pt; margin: 0 0 4px; }
+  .meta { text-align: center; color: #666; font-style: italic; font-size: 10pt; margin: 10px 0 0; }
+  .pb { page-break-after: always; }
+  h2 { color: #2E4B8B; font-size: 15pt; font-weight: 700; margin: 26px 0 10px; }
+  h3 { color: #2E5F9E; font-size: 11pt; font-weight: 700; margin: 16px 0 6px; }
+  p { margin: 0 0 10px; }
+  .note-line { font-style: italic; color: #555; margin: 0 0 10px; }
+  table { border-collapse: collapse; width: 100%; margin: 6px 0 12px; font-size: 9.8pt; }
+  th, td { border: 1px solid #BFBFBF; padding: 6px 9px; text-align: left; vertical-align: top; }
+  th { background: #DCDCDC; font-weight: 700; }
+  td.k { width: 190px; font-weight: 600; }
+  code { font-family: "Consolas", "SF Mono", ui-monospace, monospace; font-size: 9.4pt; }
+  pre { background: #F2F2F2; border: 1px solid #E2E2E2; border-radius: 3px; padding: 10px 12px;
+    font-family: "Consolas", "SF Mono", ui-monospace, monospace; font-size: 9.2pt; line-height: 1.45;
+    white-space: pre-wrap; word-break: break-word; margin: 6px 0 12px; }
+  ul { margin: 4px 0 12px; padding-left: 20px; }
+  li { margin: 3px 0; }
+  table, pre, h2, h3 { break-inside: avoid; }
+  h2, h3 { break-after: avoid; }
+</style>
+</head>
+<body>
+<div class="doc">
+
+<h1>Field Proxy — CRM Integration</h1>
+<p class="sub">API Document — Customer (Lead) &amp; Visit APIs exposed by Field Proxy</p>
+<p class="meta">Prepared by Field Proxy &nbsp;·&nbsp; Version 0.1 (Draft) &nbsp;·&nbsp; Confidential — for authorized use only</p>
+<div class="pb"></div>
+
+<h2>Version History</h2>
+<table>
+  <tr><th>Version</th><th>Changes By</th><th>Description</th><th>Date</th></tr>
+  <tr><td>0.1</td><td>Field Proxy</td><td>Initial draft — Auth + Customer &amp; Visit Insert / Update / Upsert</td><td>16-Jul-2026</td></tr>
+</table>
+
+<h2>1. Overview &amp; Conventions</h2>
+<p>This document specifies the APIs Field Proxy exposes so the Anand Rathi CRM system can exchange <b>customer (lead)</b> and <b>visit</b> data with Field Proxy. It mirrors the E-HR Integration API Document — the same authentication and AES-256 conventions apply. Customer and visit records flow in via the endpoints below; the same records are available to be read back for two-way sync.</p>
+<p><b>Global conventions apply to every endpoint:</b></p>
+<table>
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td class="k">Base URL</td><td>https://api-anandrathi.fieldproxy.ai &nbsp;(per env: api-anandrathi.sit / .uat / .fieldproxy.ai)</td></tr>
+  <tr><td class="k">Transport</td><td>HTTPS only (TLS 1.2+). Endpoints are served ONLY on the host above.</td></tr>
+  <tr><td class="k">Encryption</td><td>AES-256-CBC, PKCS7 padding, Base64. Key = 32 bytes, IV = 16 bytes; issued by Field Proxy per environment.</td></tr>
+  <tr><td class="k">Request body</td><td>application/json &nbsp;→&nbsp; { "data": "&lt;Base64 ciphertext&gt;" }</td></tr>
+  <tr><td class="k">Authorization</td><td>Authorization: Bearer &lt;JWT&gt; &nbsp;(from /crm/auth). Token is valid 1 minute.</td></tr>
+  <tr><td class="k">Response envelope</td><td>{ result, resultMessage, resultData }</td></tr>
+  <tr><td class="k">Result enum</td><td>0 = Error, 1 = Success, 2 = Info, 3 = Warning, 4 = Attention</td></tr>
+  <tr><td class="k">Batch + partial success</td><td>Insert/Update/Upsert accept a JSON array; each object is validated independently; valid rows apply, invalid rows are reported (never a whole-batch rollback).</td></tr>
+</table>
+
+<h2>2. Onboarding Parameters</h2>
+<table>
+  <tr><th>Parameter</th><th>Provided by</th></tr>
+  <tr><td>Base URLs (per SIT / UAT / PROD)</td><td>Field Proxy</td></tr>
+  <tr><td>Username / Password / AppCode (to call /crm/auth)</td><td>Field Proxy</td></tr>
+  <tr><td>AES-256 Key + IV (32 B / 16 B, base64), per environment</td><td>Field Proxy</td></tr>
+  <tr><td>Source IP ranges (for the ingress allowlist)</td><td>Anand Rathi (CRM)</td></tr>
+  <tr><td>Final customer / visit field definitions &amp; additional columns</td><td>Anand Rathi (CRM)</td></tr>
+</table>
+
+<h2>3. Authentication API</h2>
+<table>
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td class="k">Title</td><td>Field Proxy CRM Authentication API</td></tr>
+  <tr><td class="k">Request URL</td><td>POST&nbsp; https://api-anandrathi.fieldproxy.ai/crm/auth</td></tr>
+  <tr><td class="k">Method</td><td>POST</td></tr>
+  <tr><td class="k">Headers</td><td>Content-Type: application/json</td></tr>
+  <tr><td class="k">Body</td><td>AES-256 encrypted + Base64 of the request model, wrapped as { "data": "…" }</td></tr>
+</table>
+<h3>Request model (decrypted)</h3>
+<pre>{
+  "Username": "string",
+  "Password": "string",
+  "AppCode":  "string"
+}</pre>
+<h3>Sample (decrypted, then wire body)</h3>
+<pre>{ "Username": "AnandRathi_CRM", "Password": "********", "AppCode": "FPAPP1001" }
+
+// on the wire:
+{ "data": "&lt;AES-256-CBC/PKCS7/Base64 of the JSON above&gt;" }</pre>
+<h3>Responses</h3>
+<pre>// success
+{ "result": 1, "resultMessage": "Token generated successfully", "resultData": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." }
+
+// invalid credentials
+{ "result": 3, "resultMessage": "Username or password is invalid", "resultData": null }
+
+// error
+{ "result": 0, "resultMessage": "Exception message", "resultData": null }</pre>
+<ul>
+  <li>resultData is the JWT Bearer token; valid 1 minute. Re-authenticate immediately before each Customer/Visit call.</li>
+  <li>The same auth mechanism as the E-HR API; a single AppCode may be issued for both CRM and E-HR, or scoped separately.</li>
+</ul>
+
+<h2>4. Customer Insert API</h2>
+<table>
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td class="k">Title</td><td>Field Proxy CRM Customer Insert API</td></tr>
+  <tr><td class="k">Request URL</td><td>POST&nbsp; https://api-anandrathi.fieldproxy.ai/crm/customer/insert</td></tr>
+  <tr><td class="k">Method</td><td>POST</td></tr>
+  <tr><td class="k">Headers</td><td>Authorization: Bearer &lt;JWT&gt; &nbsp;·&nbsp; Content-Type: application/json</td></tr>
+  <tr><td class="k">Body</td><td>AES-256 encrypted + Base64 of a JSON array of customer objects, wrapped as { "data": "…" }</td></tr>
+  <tr><td class="k">Description</td><td>Creates new customers. Matched on CustomerId; a row whose CustomerId already exists is rejected.</td></tr>
+</table>
+<h3>Request model (decrypted)</h3>
+<pre>[
+  {
+    "CustomerId":     "String",
+    "CustomerName":   "String",
+    "CustomerType":   "String",
+    "CustomerStage":  "String",
+    "Status":         "String",
+    "PocName":        "String",
+    "ContactNumber":  "String",
+    "EmailId":        "String",
+    "LocationAddress":"String",
+    "Area":           "String",
+    "Region":         "String",
+    "Pincode":        "String",
+    "Brand":          "String",
+    "Remarks":        "String",
+    "OwnerEmpCode":   "String",
+    "Longitude":      "String",
+    "Latitude":       "String",
+    "OnboardedOn":    "Datetime"
+  }
+]</pre>
+<h3>Responses</h3>
+<pre>// success
+{ "result": 1, "resultMessage": "Data Inserted Successfully",
+  "resultData": { "received": 2, "inserted": 2, "skipped": 0, "errors": [] } }
+
+// partial success
+{ "result": 1, "resultMessage": "Partial Data Inserted Successfully",
+  "resultData": { "received": 2, "inserted": 1, "skipped": 1,
+    "errors": [ { "index": 1, "customerId": "CUST00042", "message": "CustomerId already exists" } ] } }
+
+// validation failed (nothing applied) → result 3      // error / bad payload / token expired → result 0</pre>
+
+<h2>5. Customer Update API</h2>
+<table>
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td class="k">Title</td><td>Field Proxy CRM Customer Update API</td></tr>
+  <tr><td class="k">Request URL</td><td>POST&nbsp; https://api-anandrathi.fieldproxy.ai/crm/customer/update</td></tr>
+  <tr><td class="k">Method</td><td>POST</td></tr>
+  <tr><td class="k">Headers</td><td>Authorization: Bearer &lt;JWT&gt; &nbsp;·&nbsp; Content-Type: application/json</td></tr>
+  <tr><td class="k">Body</td><td>Same shape as Customer Insert (encrypted array, wrapped as { "data": "…" }).</td></tr>
+  <tr><td class="k">Description</td><td>Updates existing customers. Matched on CustomerId; unknown rows are rejected. Only supplied fields are updated.</td></tr>
+</table>
+<pre>{ "result": 1, "resultMessage": "Data Updated Successfully",
+  "resultData": { "received": 3, "updated": 3, "skipped": 0, "errors": [] } }</pre>
+
+<h2>6. Customer Upsert API</h2>
+<table>
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td class="k">Title</td><td>Field Proxy CRM Customer Upsert API</td></tr>
+  <tr><td class="k">Request URL</td><td>POST&nbsp; https://api-anandrathi.fieldproxy.ai/crm/customer/upsert</td></tr>
+  <tr><td class="k">Method</td><td>POST</td></tr>
+  <tr><td class="k">Headers</td><td>Authorization: Bearer &lt;JWT&gt; &nbsp;·&nbsp; Content-Type: application/json</td></tr>
+  <tr><td class="k">Body</td><td>Same shape as Customer Insert.</td></tr>
+  <tr><td class="k">Description</td><td>Insert-or-update on CustomerId. Recommended for the first cutover / full-snapshot feed; use Insert + Update for steady-state deltas.</td></tr>
+</table>
+
+<h2>7. Visit Insert API</h2>
+<table>
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td class="k">Title</td><td>Field Proxy CRM Visit Insert API</td></tr>
+  <tr><td class="k">Request URL</td><td>POST&nbsp; https://api-anandrathi.fieldproxy.ai/crm/visit/insert</td></tr>
+  <tr><td class="k">Method</td><td>POST</td></tr>
+  <tr><td class="k">Headers</td><td>Authorization: Bearer &lt;JWT&gt; &nbsp;·&nbsp; Content-Type: application/json</td></tr>
+  <tr><td class="k">Body</td><td>AES-256 encrypted + Base64 of a JSON array of visit objects, wrapped as { "data": "…" }</td></tr>
+  <tr><td class="k">Description</td><td>Creates new visits. Matched on VisitId; VisitCustomerId must reference an existing customer.</td></tr>
+</table>
+<h3>Request model (decrypted)</h3>
+<pre>[
+  {
+    "VisitId":           "String",
+    "CustomerId":        "String",
+    "VisitTitle":        "String",
+    "VisitType":         "String",
+    "VisitStatus":       "String",
+    "VisitDate":         "Datetime",
+    "ScheduledDate":     "Datetime",
+    "CheckInTime":       "Datetime",
+    "CheckInLongitude":  "String",
+    "CheckInLatitude":   "String",
+    "CheckInAddress":    "String",
+    "CheckOutTime":      "Datetime",
+    "CheckOutLongitude": "String",
+    "CheckOutLatitude":  "String",
+    "CheckOutAddress":   "String",
+    "VisitRemarks":      "String",
+    "RemarksEndOfVisit": "String",
+    "TotalVisitMinutes": "Number",
+    "VisitEmpCode":      "String"
+  }
+]</pre>
+<h3>Responses</h3>
+<pre>{ "result": 1, "resultMessage": "Data Inserted Successfully",
+  "resultData": { "received": 5, "inserted": 5, "skipped": 0, "errors": [] } }</pre>
+
+<h2>8. Visit Update API</h2>
+<table>
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td class="k">Title</td><td>Field Proxy CRM Visit Update API</td></tr>
+  <tr><td class="k">Request URL</td><td>POST&nbsp; https://api-anandrathi.fieldproxy.ai/crm/visit/update</td></tr>
+  <tr><td class="k">Method</td><td>POST</td></tr>
+  <tr><td class="k">Headers</td><td>Authorization: Bearer &lt;JWT&gt; &nbsp;·&nbsp; Content-Type: application/json</td></tr>
+  <tr><td class="k">Body</td><td>Same shape as Visit Insert.</td></tr>
+  <tr><td class="k">Description</td><td>Updates existing visits (e.g. check-out, status, end-of-visit remarks). Matched on VisitId.</td></tr>
+</table>
+
+<h2>9. Visit Upsert API</h2>
+<table>
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td class="k">Title</td><td>Field Proxy CRM Visit Upsert API</td></tr>
+  <tr><td class="k">Request URL</td><td>POST&nbsp; https://api-anandrathi.fieldproxy.ai/crm/visit/upsert</td></tr>
+  <tr><td class="k">Method</td><td>POST</td></tr>
+  <tr><td class="k">Headers</td><td>Authorization: Bearer &lt;JWT&gt; &nbsp;·&nbsp; Content-Type: application/json</td></tr>
+  <tr><td class="k">Body</td><td>Same shape as Visit Insert.</td></tr>
+  <tr><td class="k">Description</td><td>Insert-or-update on VisitId. Recommended for full-snapshot feeds.</td></tr>
+</table>
+
+<h2>10. Customer Field Reference</h2>
+<p class="note-line">Required/optional flags are recommended defaults and are configurable per tenant. PII fields are encrypted in transit (whole-payload AES) and access-controlled at rest. DB column is shown for implementation reference.</p>
+<table>
+  <tr><th>Field</th><th>Required</th><th>PII</th><th>Description (DB column)</th></tr>
+  <tr><td class="k">CustomerId</td><td>Yes</td><td>No</td><td>Unique key. Insert rejects an existing id; Update/Upsert match on it. (customerid)</td></tr>
+  <tr><td class="k">CustomerName</td><td>Yes</td><td>Yes</td><td>Customer / lead name. (customer_name)</td></tr>
+  <tr><td class="k">CustomerType</td><td>Yes</td><td>No</td><td>Retail, Wholesale, Corporate, Distributor, Other. (customer_type)</td></tr>
+  <tr><td class="k">CustomerStage</td><td>Yes</td><td>No</td><td>Lead, Prospect, Qualified, Negotiation, Won, Lost. (customer_stage)</td></tr>
+  <tr><td class="k">Status</td><td>No</td><td>No</td><td>Active / Inactive. (status)</td></tr>
+  <tr><td class="k">PocName</td><td>No</td><td>Yes</td><td>Point-of-contact name. (poc_name)</td></tr>
+  <tr><td class="k">ContactNumber</td><td>Yes</td><td>Yes</td><td>Contact phone. (contact_number)</td></tr>
+  <tr><td class="k">EmailId</td><td>No</td><td>Yes</td><td>Contact email. (customer_email_id)</td></tr>
+  <tr><td class="k">LocationAddress</td><td>No</td><td>No</td><td>Full address. (location_address)</td></tr>
+  <tr><td class="k">Area / Region / Pincode</td><td>No</td><td>No</td><td>Location breakdown. (area, region, pincode)</td></tr>
+  <tr><td class="k">Brand</td><td>No</td><td>No</td><td>Brand / product interest. (brand)</td></tr>
+  <tr><td class="k">Remarks</td><td>No</td><td>No</td><td>Free-text notes. (remarks)</td></tr>
+  <tr><td class="k">OwnerEmpCode</td><td>Yes</td><td>No</td><td>Owning field rep (employee code). (employee)</td></tr>
+  <tr><td class="k">Longitude / Latitude</td><td>No</td><td>No</td><td>Customer geo-coordinates. (customer_location)</td></tr>
+  <tr><td class="k">OnboardedOn</td><td>No</td><td>No</td><td>Onboarding date. (onboarded_on / onboarded_by)</td></tr>
+</table>
+
+<h2>11. Visit Field Reference</h2>
+<table>
+  <tr><th>Field</th><th>Required</th><th>PII</th><th>Description (DB column)</th></tr>
+  <tr><td class="k">VisitId</td><td>Yes</td><td>No</td><td>Unique key. (visit_id)</td></tr>
+  <tr><td class="k">CustomerId</td><td>Yes</td><td>No</td><td>Customer this visit belongs to. (customerid)</td></tr>
+  <tr><td class="k">VisitTitle</td><td>Yes</td><td>No</td><td>Visit purpose / title. (visit_title)</td></tr>
+  <tr><td class="k">VisitType</td><td>Yes</td><td>No</td><td>New Business, Follow-up, Product Demo, Service Call, Negotiation, Closing, Other. (visit_type)</td></tr>
+  <tr><td class="k">VisitStatus</td><td>No</td><td>No</td><td>Scheduled, in_progress, Completed. (visit_status)</td></tr>
+  <tr><td class="k">VisitDate</td><td>No</td><td>No</td><td>Actual visit date/time. (visit_date)</td></tr>
+  <tr><td class="k">ScheduledDate</td><td>No</td><td>No</td><td>Planned date (for scheduled visits). (visit_scheduled_date)</td></tr>
+  <tr><td class="k">CheckInTime</td><td>No</td><td>No</td><td>Check-in time. (check_in_time)</td></tr>
+  <tr><td class="k">CheckInLongitude / Latitude</td><td>No</td><td>No</td><td>Check-in geo. (check_in_location)</td></tr>
+  <tr><td class="k">CheckInAddress</td><td>No</td><td>No</td><td>Check-in address. (check_in_address)</td></tr>
+  <tr><td class="k">CheckOutTime</td><td>No</td><td>No</td><td>Check-out time. (check_out_time)</td></tr>
+  <tr><td class="k">CheckOutLongitude / Latitude</td><td>No</td><td>No</td><td>Check-out geo. (check_out_location)</td></tr>
+  <tr><td class="k">CheckOutAddress</td><td>No</td><td>No</td><td>Check-out address. (check_out_address)</td></tr>
+  <tr><td class="k">VisitRemarks</td><td>No</td><td>No</td><td>Notes at start of visit. (visit_remarks)</td></tr>
+  <tr><td class="k">RemarksEndOfVisit</td><td>No</td><td>No</td><td>End-of-visit notes. (remarks_eov)</td></tr>
+  <tr><td class="k">TotalVisitMinutes</td><td>No</td><td>No</td><td>Duration in minutes. (total_visit_time)</td></tr>
+  <tr><td class="k">VisitEmpCode</td><td>Yes</td><td>No</td><td>Field rep who made the visit. (visit_employee)</td></tr>
+</table>
+
+<h2>12. Result Codes</h2>
+<table>
+  <tr><th>ResultType</th><th>Value</th></tr>
+  <tr><td>Error</td><td>0</td></tr>
+  <tr><td>Success</td><td>1</td></tr>
+  <tr><td>Info</td><td>2</td></tr>
+  <tr><td>Warning</td><td>3</td></tr>
+  <tr><td>Attention</td><td>4</td></tr>
+</table>
+
+<h2>13. Security</h2>
+<ul>
+  <li>HTTPS only; the partner endpoints are served exclusively on api-anandrathi.fieldproxy.ai and are IP-allowlisted to Anand Rathi CRM source ranges.</li>
+  <li>AES-256 key/IV and partner credentials are held in Field Proxy's encrypted secret store, referenced by name; rotated per environment.</li>
+  <li>A VAPT (security pen-test) will be completed before production, targeting these inbound endpoints.</li>
+</ul>
+<p><b>Recommended crypto hardening (for both directions):</b></p>
+<ul>
+  <li>Use a per-message random IV prepended to the ciphertext instead of a fixed shared IV — a static IV in CBC leaks equality of identical plaintexts.</li>
+  <li>Add a MAC (or move to AES-256-GCM) so tampering is detected; CBC alone is unauthenticated.</li>
+</ul>
+
+<h2>14. Notes &amp; Open Items</h2>
+<ul>
+  <li>Field names above are the proposed API contract; the final customer/visit field list is to be confirmed with Anand Rathi CRM (additional columns can be added).</li>
+  <li>Keys, credentials and real base URLs are exchanged per environment (SIT / UAT / PROD) during onboarding.</li>
+  <li>Two-way sync: the same customer/visit records are available to be read back (rep edits pushed from Field Proxy). A read/pull endpoint can be added on the same conventions if required.</li>
+  <li>resultData carries structured counts + per-row errors so the CRM can reconcile exactly which rows applied; it can be reduced to the minimal shape on request.</li>
+</ul>
+
+</div>
+</body>
+</html>
